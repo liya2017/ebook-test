@@ -1,0 +1,52 @@
+name: 'deploy'
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions/setup-python@v2
+        with:
+          python-version: '3.9'
+      - name: Install latex dependencies
+        run: sudo apt-get update -y && sudo apt-get install -y texlive latexmk texlive-latex-recommended texlive-latex-extra texlive-fonts-recommended ghostscript
+      - name: Update pip and install python dependencies
+        working-directory: 'docs/'
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Build html and pdf ebook
+        working-directory: 'docs/'
+        run: |
+          make html latexpdf --keep-going LATEXMKOPTS="-interaction=nonstopmode" || true
+          make latexpdf --keep-going LATEXMKOPTS="-interaction=nonstopmode" || true
+          make latexpdf --keep-going LATEXMKOPTS="-interaction=nonstopmode" || true
+        continue-on-error: true
+      - name: Get current datetime in ISO format
+        id: date
+        run: echo "::set-output name=date::$(date -u +'%Y-%m-%d')"
+      - name: Create GitHub release
+        id: gh_release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: docs/build/latex/addressinguncertaintyinmultisectordynamicsresearch.pdf
+          tag_name: ${{ steps.date.outputs.date }}v${{ github.run_number }}
+      - name: Commit the compiled files
+        run: |
+          cd docs/build/html
+          git init
+          git add -A
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git commit -m 'deploy' -a || true
+      - name: Push changes to gh-pages
+        uses: ad-m/github-push-action@master
+        with:
+          branch: gh-pages
+          directory: docs/build/html
+          force: true
+          github_token: ${{ secrets.GITHUB_TOKEN }}
